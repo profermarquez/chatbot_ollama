@@ -1,5 +1,4 @@
-from typing import Annotated, List, Dict, Any
-from langchain.chains import RetrievalQA
+from typing import Annotated, List
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain_ollama import OllamaLLM, OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
@@ -59,7 +58,7 @@ class ChatState2(TypedDict):
     thread_id: str
     custom_checkpoint_id: str
 
-# Función para llamar al modelo con retrieval
+# Función para llamar al modelo con retrieval (estrategias de recuperación de documentos)
 def call_model(state: ChatState2):
     messages = state["messages"]
     thread_id = state["thread_id"]
@@ -95,7 +94,7 @@ graph = graph_builder.compile(checkpointer=memory)
 st.title("Asistente de Consulta para PDFs 📄")
 uploaded_file = st.file_uploader("Sube tu PDF", type='pdf')
 
-# Procesar el archivo subido
+# Guardar el Archivo Subido
 if uploaded_file is not None:
     file_path = f"files/{uploaded_file.name}"
     with open(file_path, "wb") as f:
