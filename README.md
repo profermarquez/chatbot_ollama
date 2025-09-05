@@ -1,4 +1,4 @@
-# Instalar y activar un entorno virtual
+# Instalar y activar un entorno virtual con virtualenv
 /virtualenv env         /env/Scripts/activate.bat
 
 # requerimientos
