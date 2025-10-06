@@ -17,31 +17,52 @@ import time
 # Crear directorio de archivos si no existe
 os.makedirs("files", exist_ok=True)
 
-# Función para cargar y procesar un PDF
+# === CONFIGURACIÓN DE MODELOS ===
+EMBED_MODEL = "nomic-embed-text"
+LLM_MODEL = "mistral:latest"
+
+
+# === FUNCIONES ===
 @st.cache_resource
-def procesar_pdf(file_path):
-    """Carga el PDF, lo divide en fragmentos y crea el vectorstore."""
+def procesar_pdf_en_partes(file_path):
+    """Carga el PDF por partes, muestra progreso y crea el vectorstore sin colgar Streamlit."""
     loader = PyPDFLoader(file_path)
-    data = loader.load()
+    pages = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
-    all_splits = text_splitter.split_documents(data)
-    vectorstore = Chroma.from_documents(
-        documents=all_splits,
-        embedding=OllamaEmbeddings(model="mistral"),
+
+    vectorstore = Chroma(
+        embedding_function=OllamaEmbeddings(model=EMBED_MODEL),
         persist_directory="vectorstore"
     )
+
+    total_pages = len(pages)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+
+    for i, page in enumerate(pages):
+        splits = text_splitter.split_documents([page])
+        vectorstore.add_documents(splits)
+
+        # Actualizar visualmente el progreso cada 10 páginas
+        if i % 10 == 0 or i == total_pages - 1:
+            percent_complete = (i + 1) / total_pages
+            progress_bar.progress(percent_complete)
+            status_text.write(f"📄 Procesadas {i + 1} de {total_pages} páginas...")
+
     vectorstore.persist()
+    status_text.success("✅ PDF procesado correctamente.")
     return vectorstore
 
-# Configurar el modelo de lenguaje
+
+# === CONFIGURAR EL MODELO DE LENGUAJE ===
 llm = OllamaLLM(
     base_url="http://localhost:11434",
-    model="mistral:latest",
+    model=LLM_MODEL,
     verbose=True,
     callbacks=[StreamingStdOutCallbackHandler()]
 )
 
-# Definir la plantilla de prompt en español
+# === PROMPT ===
 template = """
 Eres un asistente experto en responder preguntas basándote en el contenido proporcionado. Responde siempre en español de manera clara y precisa.
 
@@ -52,13 +73,14 @@ Eres un asistente experto en responder preguntas basándote en el contenido prop
 🤖 **Asistente:**
 """
 
-# Definir el estado del chat
+# === ESTADO DEL CHAT ===
 class ChatState2(TypedDict):
     messages: Annotated[List[BaseMessage], add_messages]
     thread_id: str
     custom_checkpoint_id: str
 
-# Función para llamar al modelo con retrieval (estrategias de recuperación de documentos)
+
+# === FUNCIÓN PRINCIPAL DE RESPUESTA ===
 def call_model(state: ChatState2):
     messages = state["messages"]
     thread_id = state["thread_id"]
@@ -80,32 +102,30 @@ def call_model(state: ChatState2):
     response = llm.invoke(prompt_value)
     return {"messages": [AIMessage(content=response)], "thread_id": thread_id, "custom_checkpoint_id": checkpoint_id}
 
-# Configurar el gráfico de LangGraph
+
+# === CONFIGURAR LANGGRAPH ===
 graph_builder = StateGraph(ChatState2)
 graph_builder.add_node("model", call_model)
 graph_builder.set_entry_point("model")
 graph_builder.add_edge("model", END)
 
-# Configurar la memoria
 memory = InMemorySaver()
 graph = graph_builder.compile(checkpointer=memory)
 
-# Configuración de Streamlit
+
+# === INTERFAZ STREAMLIT ===
 st.title("Asistente de Consulta para PDFs 📄")
 uploaded_file = st.file_uploader("Sube tu PDF", type='pdf')
 
-# Guardar el Archivo Subido
 if uploaded_file is not None:
     file_path = f"files/{uploaded_file.name}"
     with open(file_path, "wb") as f:
         f.write(uploaded_file.read())
-    st.session_state.vectorstore = procesar_pdf(file_path)
+    st.session_state.vectorstore = procesar_pdf_en_partes(file_path)
 
-# Inicializar el estado del chat
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = {"messages": [], "thread_id": str(uuid.uuid4()), "custom_checkpoint_id": str(uuid.uuid4())}
 
-# Manejar la interacción del usuario con Streamlit
 if user_input := st.chat_input("Haz una pregunta:", key="user_input"):
     user_message = HumanMessage(content=user_input)
     st.session_state.chat_history["messages"].append(user_message)
@@ -115,7 +135,10 @@ if user_input := st.chat_input("Haz una pregunta:", key="user_input"):
 
     with st.chat_message("assistant"):
         with st.spinner("El asistente está respondiendo..."):
-            response = graph.invoke(st.session_state.chat_history, config={"thread_id": st.session_state.chat_history["thread_id"], "custom_checkpoint_id": st.session_state.chat_history["custom_checkpoint_id"]})
+            response = graph.invoke(st.session_state.chat_history, config={
+                "thread_id": st.session_state.chat_history["thread_id"],
+                "custom_checkpoint_id": st.session_state.chat_history["custom_checkpoint_id"]
+            })
             full_response = response["messages"][-1].content
             message_placeholder = st.empty()
             for chunk in full_response.split():
