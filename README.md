@@ -8,7 +8,7 @@ pip install langchain langchain-community langchain-ollama langgraph streamlit p
 # https://graphviz.org/download/
 pip install graphviz
 
-##**Ollama**:
+## **Ollama**:
 
 Debes tener Ollama instalado y funcionando localmente, con el modelo **mistral:latest** y **nomic-embed-text** descargado.
 
