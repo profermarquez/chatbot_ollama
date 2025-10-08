@@ -8,7 +8,9 @@ pip install langchain langchain-community langchain-ollama langgraph streamlit p
 # https://graphviz.org/download/
 pip install graphviz
 
-Ollama: Debes tener Ollama instalado y funcionando localmente, con el modelo mistral:latest descargado.
+##**Ollama**:
+
+Debes tener Ollama instalado y funcionando localmente, con el modelo **mistral:latest** y **nomic-embed-text** descargado.
 
 # Limpiar base de datos vectorial
 rm -rf vectorstore/   
