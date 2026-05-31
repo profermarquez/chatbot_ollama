@@ -1,18 +1,23 @@
 from typing import Annotated, List
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langchain_ollama import OllamaLLM, OllamaEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import PyPDFLoader
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import StateGraph, END
-from typing_extensions import TypedDict
-from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 import uuid
-import streamlit as st
 import os
 import time
+
+import streamlit as st
+
+from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+
+from langchain_ollama import OllamaLLM, OllamaEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_community.document_loaders import PyPDFLoader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import StateGraph, END
+from langgraph.graph.message import add_messages
+
+from typing_extensions import TypedDict
 
 # Crear directorio de archivos si no existe
 os.makedirs("files", exist_ok=True)
