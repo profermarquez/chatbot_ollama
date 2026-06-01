@@ -2,7 +2,7 @@
 /virtualenv env         /env/Scripts/activate.bat
 
 # requerimientos
-pip install langchain langchain-community langchain-ollama langgraph streamlit pypdf typing-extensions chromadb
+pip install langchain langchain-community langchain-ollama langgraph streamlit pypdf typing-extensions chromadb langchain-chroma
 
 # para imprimir el grafo
 # https://graphviz.org/download/
