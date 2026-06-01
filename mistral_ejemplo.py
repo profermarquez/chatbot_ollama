@@ -9,7 +9,7 @@ from langchain_core.callbacks.streaming_stdout import StreamingStdOutCallbackHan
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from langchain_ollama import OllamaLLM, OllamaEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -30,10 +30,17 @@ LLM_MODEL = "mistral:latest"
 # === FUNCIONES ===
 @st.cache_resource
 def procesar_pdf_en_partes(file_path):
-    """Carga el PDF por partes, muestra progreso y crea el vectorstore sin colgar Streamlit."""
+    """
+    Carga el PDF por partes, muestra progreso y crea el vectorstore
+    evitando páginas o chunks vacíos.
+    """
     loader = PyPDFLoader(file_path)
     pages = loader.load()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=100)
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1500,
+        chunk_overlap=100
+    )
 
     vectorstore = Chroma(
         embedding_function=OllamaEmbeddings(model=EMBED_MODEL),
@@ -44,20 +51,46 @@ def procesar_pdf_en_partes(file_path):
     progress_bar = st.progress(0)
     status_text = st.empty()
 
+    total_chunks_agregados = 0
+
     for i, page in enumerate(pages):
+        if not page.page_content or not page.page_content.strip():
+            if i % 10 == 0 or i == total_pages - 1:
+                progress_bar.progress((i + 1) / total_pages)
+                status_text.write(
+                    f"📄 Procesadas {i + 1} de {total_pages} páginas..."
+                )
+            continue
+
         splits = text_splitter.split_documents([page])
-        vectorstore.add_documents(splits)
 
-        # Actualizar visualmente el progreso cada 10 páginas
+        splits = [
+            doc for doc in splits
+            if doc.page_content and doc.page_content.strip()
+        ]
+
+        if splits:
+            vectorstore.add_documents(splits)
+            total_chunks_agregados += len(splits)
+
         if i % 10 == 0 or i == total_pages - 1:
-            percent_complete = (i + 1) / total_pages
-            progress_bar.progress(percent_complete)
-            status_text.write(f"📄 Procesadas {i + 1} de {total_pages} páginas...")
+            progress_bar.progress((i + 1) / total_pages)
+            status_text.write(
+                f"📄 Procesadas {i + 1} de {total_pages} páginas..."
+            )
 
-    vectorstore.persist()
-    status_text.success("✅ PDF procesado correctamente.")
+    if total_chunks_agregados == 0:
+        st.error(
+            "No se pudo extraer texto del PDF. Puede ser un PDF escaneado como imagen. "
+            "En ese caso necesitás aplicar OCR antes de usar RAG."
+        )
+        return None
+
+    status_text.success(
+        f"✅ PDF procesado correctamente. Chunks agregados: {total_chunks_agregados}"
+    )
+
     return vectorstore
-
 
 # === CONFIGURAR EL MODELO DE LENGUAJE ===
 llm = OllamaLLM(
@@ -94,7 +127,7 @@ def call_model(state: ChatState2):
     # Recuperar documentos relevantes del vectorstore
     if 'vectorstore' in st.session_state:
         retriever = st.session_state.vectorstore.as_retriever()
-        retrieved_docs = retriever.get_relevant_documents(messages[-1].content)
+        retrieved_docs = retriever.invoke(messages[-1].content)
         context = "\n".join([doc.page_content for doc in retrieved_docs])
     else:
         context = ""
@@ -126,7 +159,10 @@ if uploaded_file is not None:
     file_path = f"files/{uploaded_file.name}"
     with open(file_path, "wb") as f:
         f.write(uploaded_file.read())
-    st.session_state.vectorstore = procesar_pdf_en_partes(file_path)
+    vectorstore = procesar_pdf_en_partes(file_path)
+
+    if vectorstore is not None:
+        st.session_state.vectorstore = vectorstore
 
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = {"messages": [], "thread_id": str(uuid.uuid4()), "custom_checkpoint_id": str(uuid.uuid4())}
@@ -140,10 +176,15 @@ if user_input := st.chat_input("Haz una pregunta:", key="user_input"):
 
     with st.chat_message("assistant"):
         with st.spinner("El asistente está respondiendo..."):
-            response = graph.invoke(st.session_state.chat_history, config={
-                "thread_id": st.session_state.chat_history["thread_id"],
-                "custom_checkpoint_id": st.session_state.chat_history["custom_checkpoint_id"]
-            })
+            response = graph.invoke(
+    st.session_state.chat_history,
+    config={
+        "configurable": {
+            "thread_id": st.session_state.chat_history["thread_id"],
+            "checkpoint_id": st.session_state.chat_history["custom_checkpoint_id"]
+                        }
+            }
+    )
             full_response = response["messages"][-1].content
             message_placeholder = st.empty()
             for chunk in full_response.split():
